@@ -1,0 +1,7 @@
+__pycache__
+*.pyc
+*.db
+.venv
+results
+smoke_test.py
+sweep.py
