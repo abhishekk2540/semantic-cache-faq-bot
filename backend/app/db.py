@@ -7,17 +7,15 @@ from .config import DB_PATH
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    username TEXT UNIQUE NOT NULL,
-    salt TEXT NOT NULL,
-    pw_hash TEXT NOT NULL,
+    id TEXT PRIMARY KEY,
+    username TEXT NOT NULL,
     threshold REAL NOT NULL DEFAULT 0.85,
     use_guard INTEGER NOT NULL DEFAULT 1,
     created REAL NOT NULL
 );
 CREATE TABLE IF NOT EXISTS logs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER NOT NULL,
+    user_id TEXT NOT NULL,
     ts REAL NOT NULL,
     question TEXT NOT NULL,
     hit INTEGER NOT NULL,
@@ -29,13 +27,13 @@ CREATE TABLE IF NOT EXISTS logs (
 CREATE INDEX IF NOT EXISTS idx_logs_user ON logs(user_id, id);
 CREATE TABLE IF NOT EXISTS cache_entries (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER NOT NULL,
+    user_id TEXT NOT NULL,
     question TEXT NOT NULL,
     answer TEXT NOT NULL,
     faq_id INTEGER,
     created REAL NOT NULL,
-    ttl_days REAL NOT NULL
-    ,vector BLOB
+    ttl_days REAL NOT NULL,
+    vector BLOB
 );
 CREATE INDEX IF NOT EXISTS idx_entries_user ON cache_entries(user_id);
 """
@@ -55,24 +53,20 @@ def conn():
 def init_db():
     with conn() as c:
         c.executescript(SCHEMA)
-        columns = {row["name"] for row in c.execute("PRAGMA table_info(cache_entries)")}
-        if "vector" not in columns:
-            c.execute("ALTER TABLE cache_entries ADD COLUMN vector BLOB")
 
 
 # ---------- users ----------
-def create_user(username, salt, pw_hash):
+def ensure_user(user_id, username):
+    """Create the user row if it does not exist yet (auto-provision on first request)."""
     with conn() as c:
-        cur = c.execute(
-            "INSERT INTO users (username, salt, pw_hash, created) VALUES (?,?,?,?)",
-            (username, salt, pw_hash, time.time()),
-        )
-        return cur.lastrowid
-
-
-def get_user_by_name(username):
-    with conn() as c:
-        return c.execute("SELECT * FROM users WHERE username=?", (username,)).fetchone()
+        row = c.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
+        if row is None:
+            c.execute(
+                "INSERT INTO users (id, username, created) VALUES (?,?,?)",
+                (user_id, username, time.time()),
+            )
+            row = c.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
+        return row
 
 
 def get_user(user_id):

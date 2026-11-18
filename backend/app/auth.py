@@ -1,43 +1,69 @@
-import hashlib
-import hmac
 import os
-import time
-
-import jwt
+import logging
 from fastapi import Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from .config import JWT_HOURS, JWT_SECRET
+import jwt
+from jwt import PyJWKClient
+
+from .config import CLERK_FRONTEND_API
+
+logger = logging.getLogger(__name__)
 
 bearer = HTTPBearer(auto_error=False)
 
-
-def hash_password(password, salt=None):
-    salt = salt or os.urandom(16)
-    digest = hashlib.pbkdf2_hmac("sha256", password.encode(), salt, 200_000)
-    return salt.hex(), digest.hex()
+_jwk_clients = {}
 
 
-def verify_password(password, salt_hex, hash_hex):
-    _, digest = hash_password(password, bytes.fromhex(salt_hex))
-    return hmac.compare_digest(digest, hash_hex)
-
-
-def create_token(user_id, username):
-    payload = {
-        "sub": str(user_id),
-        "username": username,
-        "exp": int(time.time()) + JWT_HOURS * 3600,
-    }
-    return jwt.encode(payload, JWT_SECRET, algorithm="HS256")
+def _get_jwk_client_for_issuer(issuer: str):
+    """Cache and return a PyJWKClient for the given Clerk issuer/frontend API."""
+    issuer = issuer.rstrip("/")
+    if issuer not in _jwk_clients:
+        jwks_url = f"{issuer}/.well-known/jwks.json"
+        _jwk_clients[issuer] = PyJWKClient(jwks_url, cache_jwk_set=True, lifespan=3600)
+    return _jwk_clients[issuer]
 
 
 def current_user(creds: HTTPAuthorizationCredentials = Depends(bearer)):
-    """Dependency: reads the Bearer token and returns {'id':..., 'username':...}."""
+    """Dependency: validates the Clerk-issued JWT and returns the user info.
+
+    Returns dict with:
+      - id:       Clerk user id  (e.g. "user_2x...")
+      - username: preferred identifier extracted from claims
+    """
     if creds is None:
-        raise HTTPException(401, "Login required")
+        raise HTTPException(401, "Login required – send a Clerk session token")
+
+    token = creds.credentials
     try:
-        data = jwt.decode(creds.credentials, JWT_SECRET, algorithms=["HS256"])
-    except jwt.PyJWTError:
-        raise HTTPException(401, "Invalid or expired token")
-    return {"id": int(data["sub"]), "username": data["username"]}
+        # Determine the issuer: prefer config, or fallback to token's own `iss` claim
+        issuer = CLERK_FRONTEND_API
+        if not issuer:
+            unverified = jwt.decode(token, options={"verify_signature": False})
+            issuer = unverified.get("iss", "")
+
+        if not issuer:
+            raise ValueError("No Clerk issuer found in config or token")
+
+        jwk_client = _get_jwk_client_for_issuer(issuer)
+        signing_key = jwk_client.get_signing_key_from_jwt(token)
+        data = jwt.decode(
+            token,
+            signing_key.key,
+            algorithms=["RS256"],
+            options={"verify_aud": False},
+        )
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(401, "Token expired – please sign in again")
+    except Exception as exc:
+        logger.warning("Clerk JWT verification failed: %s", exc)
+        raise HTTPException(401, f"Invalid token: {exc}")
+
+    user_id = data.get("sub", "")
+    username = (
+        data.get("username")
+        or data.get("email")
+        or data.get("name")
+        or user_id
+    )
+    return {"id": user_id, "username": username}

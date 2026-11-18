@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { api } from "../api.js";
+import { useClerkApi } from "../api.js";
 
 const DEMO = [
   "Do you have a store in Mumbai?",
@@ -17,6 +17,7 @@ const REASONS = {
 };
 
 export default function Chat() {
+  const api = useClerkApi();
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);

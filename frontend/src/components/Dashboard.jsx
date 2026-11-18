@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { api } from "../api.js";
+import { useClerkApi } from "../api.js";
 
 const fmt = (v, unit = "") => (v === null || v === undefined ? "-" : v + unit);
 
@@ -15,6 +15,7 @@ function Stat({ label, value, sub }) {
 }
 
 export default function Dashboard() {
+  const api = useClerkApi();
   const [stats, setStats] = useState(null);
   const [logs, setLogs] = useState([]);
   const [entries, setEntries] = useState([]);

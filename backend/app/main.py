@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from . import db
-from .auth import create_token, current_user, hash_password, verify_password
+from .auth import current_user
 from .cache import SemanticCache
 from .config import (
     COST_PER_CALL_INR, CORS_ORIGINS, DEFAULT_THRESHOLD, LLM_MODE, MOCK_LLM_MS,
@@ -40,43 +40,24 @@ def get_cache(user_id):
     cache = CACHES.get(user_id)
     if cache is None:
         row = db.get_user(user_id)
-        cache = SemanticCache(threshold=row["threshold"], use_guard=bool(row["use_guard"]))
+        if row is None:
+            cache = SemanticCache()
+        else:
+            cache = SemanticCache(threshold=row["threshold"], use_guard=bool(row["use_guard"]))
         cache.bulk_load(db.load_entries(user_id))  # restore after a server restart
         cache.purge_expired()
         CACHES[user_id] = cache
     return cache
 
 
-# ---------------------------------------------------------------- auth
-class Credentials(BaseModel):
-    username: str = Field(min_length=3, max_length=32)
-    password: str = Field(min_length=6, max_length=100)
-
-
-@app.post("/auth/register")
-def register(body: Credentials):
-    username = body.username.strip().lower()
-    if db.get_user_by_name(username):
-        raise HTTPException(409, "Username already taken")
-    salt, pw_hash = hash_password(body.password)
-    user_id = db.create_user(username, salt, pw_hash)
-    return {"token": create_token(user_id, username), "username": username}
-
-
-@app.post("/auth/login")
-def login(body: Credentials):
-    username = body.username.strip().lower()
-    row = db.get_user_by_name(username)
-    if not row or not verify_password(body.password, row["salt"], row["pw_hash"]):
-        raise HTTPException(401, "Wrong username or password")
-    return {"token": create_token(row["id"], username), "username": username}
+# ---------------------------------------------------------------- auth (Clerk)
+# No /auth/register or /auth/login endpoints — Clerk handles all of that.
+# The frontend sends the Clerk session token as a Bearer header.
 
 
 @app.get("/auth/me")
 def me(user=Depends(current_user)):
-    row = db.get_user(user["id"])
-    if not row:
-        raise HTTPException(401, "User no longer exists")
+    row = db.ensure_user(user["id"], user["username"])
     return {
         "username": row["username"],
         "threshold": row["threshold"],
@@ -93,6 +74,7 @@ class AskBody(BaseModel):
 
 @app.post("/ask")
 def ask(body: AskBody, user=Depends(current_user)):
+    db.ensure_user(user["id"], user["username"])
     question = body.question.strip()
     if not question:
         raise HTTPException(400, "Empty question")
@@ -144,6 +126,7 @@ class SettingsBody(BaseModel):
 
 @app.put("/settings")
 def update_settings(body: SettingsBody, user=Depends(current_user)):
+    db.ensure_user(user["id"], user["username"])
     cache = get_cache(user["id"])
     cache.threshold = body.threshold
     cache.use_guard = body.use_guard
@@ -154,6 +137,7 @@ def update_settings(body: SettingsBody, user=Depends(current_user)):
 @app.post("/cache/seed")
 def seed(user=Depends(current_user)):
     """Preload all FAQ phrasings into this tenant's cache."""
+    db.ensure_user(user["id"], user["username"])
     cache = get_cache(user["id"])
     have = {e["question"] for e in cache.entries}
     now = time.time()
@@ -177,6 +161,7 @@ def seed(user=Depends(current_user)):
 
 @app.post("/cache/clear")
 def clear(user=Depends(current_user)):
+    db.ensure_user(user["id"], user["username"])
     get_cache(user["id"]).clear()
     db.clear_entries(user["id"])
     return {"cache_size": 0}
@@ -184,12 +169,14 @@ def clear(user=Depends(current_user)):
 
 @app.post("/stats/reset")
 def reset_stats(user=Depends(current_user)):
+    db.ensure_user(user["id"], user["username"])
     db.clear_logs(user["id"])
     return {"ok": True}
 
 
 @app.get("/cache/entries")
 def entries(user=Depends(current_user)):
+    db.ensure_user(user["id"], user["username"])
     return get_cache(user["id"]).snapshot()
 
 
@@ -203,6 +190,7 @@ def _pct(sorted_vals, p):
 
 @app.get("/stats")
 def stats(user=Depends(current_user)):
+    db.ensure_user(user["id"], user["username"])
     logs = db.get_logs(user["id"])
     total = len(logs)
     hits = [l for l in logs if l["hit"]]
@@ -236,6 +224,7 @@ def stats(user=Depends(current_user)):
 
 @app.get("/logs")
 def logs(limit: int = 50, user=Depends(current_user)):
+    db.ensure_user(user["id"], user["username"])
     return db.get_logs(user["id"], limit=min(max(limit, 1), 500))
 
 
@@ -265,6 +254,7 @@ class PairBody(BaseModel):
 
 @app.post("/demo/negation")
 def demo_negation(body: PairBody, user=Depends(current_user)):
+    db.ensure_user(user["id"], user["username"])
     va, vb = embed_many([body.a, body.b])
     score = round(float(va @ vb), 3)
     cache = get_cache(user["id"])

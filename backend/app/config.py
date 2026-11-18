@@ -6,9 +6,21 @@ DATA_DIR = BASE_DIR / "data"
 RESULTS_DIR = BASE_DIR / "results"
 DB_PATH = BASE_DIR / "cache_app.db"
 
-# --- auth ---
-JWT_SECRET = os.getenv("JWT_SECRET", "dev-only-secret-change-me-before-deploying-0123456789")
-JWT_HOURS = 24
+# Auto-load .env file if present
+ENV_PATH = BASE_DIR / ".env"
+if ENV_PATH.exists():
+    with open(ENV_PATH, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                k, _, v = line.partition("=")
+                k = k.strip()
+                v = v.strip().strip("\"'")
+                if k not in os.environ:
+                    os.environ[k] = v
+
+# --- Clerk auth ---
+CLERK_FRONTEND_API = os.getenv("CLERK_FRONTEND_API", "").rstrip("/")
 
 # --- cache behaviour ---
 DEFAULT_THRESHOLD = float(os.getenv("DEFAULT_THRESHOLD", "0.85"))

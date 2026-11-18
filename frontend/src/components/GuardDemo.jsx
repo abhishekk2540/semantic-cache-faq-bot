@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { api } from "../api.js";
+import { useClerkApi } from "../api.js";
 
 const PRESETS = [
   ["refund milega", "refund nahi milega"],
@@ -9,6 +9,7 @@ const PRESETS = [
 ];
 
 export default function GuardDemo() {
+  const api = useClerkApi();
   const [a, setA] = useState(PRESETS[0][0]);
   const [b, setB] = useState(PRESETS[0][1]);
   const [comparison, setComparison] = useState(null);

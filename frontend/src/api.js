@@ -1,19 +1,16 @@
+import { useAuth } from "@clerk/react";
+
 const BASE = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
 
-export const getToken = () => localStorage.getItem("token");
-export const setSession = (token, username) => {
-  localStorage.setItem("token", token);
-  localStorage.setItem("username", username);
-};
-export const clearSession = () => {
-  localStorage.removeItem("token");
-  localStorage.removeItem("username");
-};
-
-export async function api(path, { method = "GET", body, signal } = {}) {
+/**
+ * Standalone api() that accepts a token parameter.
+ * Components call useClerkApi() to get a wrapper that auto-injects the token.
+ */
+export async function api(path, { method = "GET", body, signal, token } = {}) {
   const headers = { "Content-Type": "application/json" };
-  const token = getToken();
-  if (token) headers.Authorization = `Bearer ${token}`;
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
 
   let res;
   try {
@@ -27,14 +24,23 @@ export async function api(path, { method = "GET", body, signal } = {}) {
     throw new Error("Cannot reach the backend. Is uvicorn running on port 8000?");
   }
 
-  if (res.status === 401 && token) {
-    clearSession();
-    window.location.reload();
-  }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     const detail = data.detail;
     throw new Error(typeof detail === "string" ? detail : "Request failed (" + res.status + ")");
   }
   return data;
+}
+
+/**
+ * React hook: returns an `api` function that automatically attaches
+ * the current Clerk session token to every request.
+ */
+export function useClerkApi() {
+  const { getToken } = useAuth();
+
+  return async (path, options = {}) => {
+    const token = await getToken();
+    return api(path, { ...options, token });
+  };
 }

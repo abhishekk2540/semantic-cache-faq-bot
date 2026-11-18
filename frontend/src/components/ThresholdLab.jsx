@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   CartesianGrid, Legend, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
-import { api } from "../api.js";
+import { useClerkApi } from "../api.js";
 
 function Stat({ label, value, sub, tone }) {
   return (
@@ -15,6 +15,7 @@ function Stat({ label, value, sub, tone }) {
 }
 
 export default function ThresholdLab() {
+  const api = useClerkApi();
   const [multi, setMulti] = useState(true);
   const [guard, setGuard] = useState(true);
   const [sweep, setSweep] = useState(null);

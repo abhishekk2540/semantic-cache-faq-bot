@@ -1,6 +1,5 @@
 import { lazy, Suspense, useState } from "react";
-import { clearSession, getToken } from "./api.js";
-import Login from "./components/Login.jsx";
+import { Show, SignInButton, UserButton, useUser } from "@clerk/react";
 import Chat from "./components/Chat.jsx";
 const Dashboard = lazy(() => import("./components/Dashboard.jsx"));
 const ThresholdLab = lazy(() => import("./components/ThresholdLab.jsx"));
@@ -13,37 +12,41 @@ const TABS = [
   ["guard", "Negation Guard"],
 ];
 
-export default function App() {
-  const [authed, setAuthed] = useState(!!getToken());
+function AuthenticatedApp() {
+  const { user } = useUser();
   const [tab, setTab] = useState("chat");
 
-  if (!authed) return <Login onDone={() => setAuthed(true)} />;
-
-  const logout = () => {
-    clearSession();
-    setAuthed(false);
-  };
+  const displayName =
+    user?.username ||
+    user?.firstName ||
+    user?.primaryEmailAddress?.emailAddress ||
+    user?.emailAddresses?.[0]?.emailAddress ||
+    "User";
 
   return (
     <div className="app">
       <header className="topbar">
-        <div className="brand">
-          Semantic Cache
-        </div>
+        <div className="brand">Semantic Cache</div>
         <nav>
           {TABS.map(([id, label]) => (
-            <button key={id} className={tab === id ? "tab active" : "tab"} onClick={() => setTab(id)}>
+            <button
+              key={id}
+              className={tab === id ? "tab active" : "tab"}
+              onClick={() => setTab(id)}
+            >
               {label}
             </button>
           ))}
         </nav>
         <div className="who">
-          {localStorage.getItem("username")}
-          <button className="ghost" onClick={logout}>Log out</button>
+          <span>{displayName}</span>
+          <UserButton afterSignOutUrl="/" />
         </div>
       </header>
       <main>
-        <Suspense fallback={<div className="card muted">Loading this view...</div>}>
+        <Suspense
+          fallback={<div className="card muted">Loading this view...</div>}
+        >
           {tab === "chat" && <Chat />}
           {tab === "dashboard" && <Dashboard />}
           {tab === "lab" && <ThresholdLab />}
@@ -51,5 +54,37 @@ export default function App() {
         </Suspense>
       </main>
     </div>
+  );
+}
+
+function LandingPage() {
+  return (
+    <div className="login-wrap">
+      <div className="card login">
+        <h1>Semantic Cache</h1>
+        <p className="muted">
+          This FAQ bot reuses answers when a new question has the same meaning.
+          Your account has its own cache.
+        </p>
+        <SignInButton mode="modal">
+          <button className="primary" style={{ width: "100%", marginTop: 16 }}>
+            Sign in to get started
+          </button>
+        </SignInButton>
+      </div>
+    </div>
+  );
+}
+
+export default function App() {
+  return (
+    <>
+      <Show when="signed-in">
+        <AuthenticatedApp />
+      </Show>
+      <Show when="signed-out">
+        <LandingPage />
+      </Show>
+    </>
   );
 }

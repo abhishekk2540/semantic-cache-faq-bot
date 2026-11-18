@@ -3,5 +3,5 @@ uvicorn
 sentence-transformers
 faiss-cpu
 numpy
-pyjwt
+pyjwt[crypto]
 httpx
