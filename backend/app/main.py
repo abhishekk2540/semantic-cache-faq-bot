@@ -27,7 +27,9 @@ async def lifespan(app):
 app = FastAPI(title="Semantic Cache FAQ Bot", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=CORS_ORIGINS,
+    allow_origins=CORS_ORIGINS if CORS_ORIGINS != ["*"] else ["*"],
+    allow_origin_regex=r"https://.*\.vercel\.app|http://localhost:.*|http://127\.0\.0\.1:.*",
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )

@@ -36,6 +36,7 @@ MOCK_LLM_MS = int(os.getenv("MOCK_LLM_MS", "1500"))
 # Assumed cost of one LLM call in rupees. This is an ASSUMPTION; say so in the README.
 COST_PER_CALL_INR = float(os.getenv("COST_PER_CALL_INR", "0.50"))
 
-CORS_ORIGINS = os.getenv(
+raw_origins = os.getenv(
     "CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173"
-).split(",")
+)
+CORS_ORIGINS = [orig.strip().rstrip("/") for orig in raw_origins.split(",") if orig.strip()]
